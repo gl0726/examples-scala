@@ -31,6 +31,17 @@ import org.apache.kafka.common.serialization.StringDeserializer
   *          虽然三个水位线可能不一样，但是到了keyby阶段，会根据设置时间(例如十秒)广播一次到下游三个windows时，每个windows会获得三个上游广播来的水位线，此时取最小的水位线即可！
   *          至于多个流也没关系，在下游只要有合并的地方，例如keyby -> windows, 那么合并后的算子水位线是多个流中最小的水位线即可！
   *
+  *         ？ 最新理解，假设: kafka 10分区 -> 10 source -> watermark -> map -> keyby -> windows 这个时候如果kafka有一个分区没有数据，那么水位线不会推动，
+  *          按照常规解释的原因是因为windows接收10个分区的时间来取最小值作为时间，此时会有一个分区没有数据，所导致的水位线不推动
+  *          但此时如果 source 设置并行度为1 ，那么此时只要kafka有数据，那怕九个分区都没有数据，只有一个分区有数据，也会促成水位线的推动
+  *          此时我的理解是并行度可以理解为是一个task作业！如果source设置为1，那么下游的windows里面的会认为只有一分区，所以会永远推动
+  *          那么如果此时是：kafka 10分区 -> 1 source -> watermark -> map -> keyby -> windows10
+  *
+  *          水位线在shuffle过程中是广播发送给下游，而在正常操作时是一对一发送水位线的，并且水位线和shuffle的数据接收不可混为一谈，shuffle数据接收和发送
+  *          是和key息息相关，但水位线遇到shuffle直接就是广播到下游，
+  *         ？ 新场景：2个kafka分区，2个source, 1个map ,keyby, 2个windows ！ 此时只向一个kafka分区写数据，是否会堵塞呢？此实验为了验证下游windows算子里面的获取时间的分区是否根据上游算子的
+  *          个数来判断！
+  *
   *          这里可以看网址图片：https://ci.apache.org/projects/flink/flink-docs-release-1.11/dev/event_timestamps_watermarks.html#watermark-strategies-and-the-kafka-connector
   *          看最下面的图片和多流的思路是一样的
   *
